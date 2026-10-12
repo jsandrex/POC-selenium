@@ -1,8 +1,15 @@
 package com.saucedemo;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.UUID;
 
 import org.openqa.selenium.By;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -11,6 +18,8 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.Assert;
+import org.testng.ITestResult;
+import org.testng.Reporter;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -40,10 +49,36 @@ public class SauceDemoTests {
 	}
 
 	@AfterMethod(alwaysRun = true)
-	public void tearDown() {
+	public void tearDown(ITestResult result) throws IOException {
 		if (driver != null) {
-			driver.quit();
-			driver = null;
+			try {
+				captureEvidence(result);
+			} finally {
+				driver.quit();
+				driver = null;
+			}
+		}
+	}
+
+	private void captureEvidence(ITestResult result) throws IOException {
+		String status = result.isSuccess() ? "PASS"
+				: result.getStatus() == ITestResult.SKIP ? "SKIP" : "FAIL";
+		Path directory = Path.of(result.getTestContext().getOutputDirectory(), "screenshots");
+		Files.createDirectories(directory);
+		Path screenshot = directory.resolve(result.getMethod().getMethodName()
+				+ "-" + status + "-" + UUID.randomUUID() + ".png").toAbsolutePath();
+		byte[] image = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+		Files.write(screenshot, image);
+		ITestResult previousResult = Reporter.getCurrentTestResult();
+		Reporter.setCurrentTestResult(result);
+		try {
+			Reporter.log("Screenshot (" + status + "): " + screenshot, true);
+			Reporter.log("<a href=\"" + screenshot.toUri() + "\">Open screenshot ("
+					+ status + ")</a><br/><img alt=\"Test evidence " + status
+					+ "\" style=\"max-width:100%;width:960px\" src=\"data:image/png;base64,"
+					+ Base64.getEncoder().encodeToString(image) + "\"/>");
+		} finally {
+			Reporter.setCurrentTestResult(previousResult);
 		}
 	}
 
